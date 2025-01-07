@@ -1,0 +1,33 @@
+Pointer Lock API 사용 예시
+웹 페이지에서 마우스를 잠그려면 Pointer Lock API를 사용할 수 있습니다. 이 API는 사용자가 특정 요소를 클릭하면 마우스를 잠그고, 그 후 마우스 이동 이벤트를 계속해서 받을 수 있게 해줍니다.
+// 마우스를 잠그는 함수
+function requestPointerLock() {
+  // 브라우저에서 Pointer Lock을 요청
+  document.documentElement.requestPointerLock();
+}
+
+// Pointer Lock이 성공적으로 활성화되면 마우스 이동을 추적
+document.addEventListener('mousemove', function(event) {
+  if (document.pointerLockElement) {
+    // 마우스의 이동량을 처리 (이동한 거리)
+    const movementX = event.movementX;
+    const movementY = event.movementY;
+    console.log('Mouse moved:', movementX, movementY);
+  }
+});
+
+// Pointer Lock을 해제하는 함수
+function exitPointerLock() {
+  document.exitPointerLock();
+}
+
+// 마우스 잠금을 시작할 버튼
+document.getElementById('lockButton').addEventListener('click', function() {
+  requestPointerLock();
+});
+
+// Pointer Lock을 종료하는 버튼
+document.getElementById('unlockButton').addEventListener('click', function() {
+  exitPointerLock();
+});
+이방식을 잘 이용하면 3d 처리도 잘할 수 있을것 같아 올림
