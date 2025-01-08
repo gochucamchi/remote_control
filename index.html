@@ -1,12 +1,19 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mouse and Keyboard Control</title>
     <script src="/socket.io/socket.io.js"></script>
     <style>
-        /* 입력을 받을 영역 */
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden; /* 스크롤 제거 */
+        }
+
         #input-area {
             width: 100vw;
             height: 100vh;
@@ -15,99 +22,99 @@
             display: flex;
             justify-content: center;
             align-items: center;
+            outline: none; /* 포커스 시 테두리 제거 */
         }
+
         #log {
             font-size: 14px;
             margin-top: 10px;
             color: #555;
+            text-align: center;
         }
     </style>
 </head>
 <body>
-    <!-- 마우스 및 키보드 입력을 감지할 공간 -->
-    <div id="input-area">
-    </div>
-    <div id="log"></div>
+    <div id="input-area" tabindex="0"></div>
+    <div id="log">F9를 눌러 Pointer Lock을 전환하세요.</div>
     <script>
         const socket = io();
         const inputArea = document.getElementById('input-area');
         const log = document.getElementById('log');
-        
-        let lastX = 0;
-        let lastY = 0;
-        const pressedKeys = new Set(); // 누른 키 관리
-    
-        // 우클릭 기본 동작 비활성화
+        let isPointerLocked = false;
+
+        // Pointer Lock 상태 변경
+        inputArea.addEventListener('keydown', (event) => {
+            if (event.key === 'F9') {
+                if (!isPointerLocked) {
+                    inputArea.requestPointerLock(); // Pointer Lock 요청
+                } else {
+                    document.exitPointerLock(); // Pointer Lock 해제
+                }
+            } else {
+                // 키보드 입력 전송
+                socket.emit('keyPress', { key: event.key, type: 'down' });
+                log.textContent = `Key pressed: ${event.key}`;
+            }
+        });
+
+        inputArea.addEventListener('keyup', (event) => {
+            socket.emit('keyPress', { key: event.key, type: 'up' });
+            log.textContent = `Key released: ${event.key}`;
+        });
+
+        // Pointer Lock 상태 관리
+        document.addEventListener('pointerlockchange', () => {
+            isPointerLocked = document.pointerLockElement === inputArea;
+            log.textContent = isPointerLocked
+                ? "Pointer Lock 활성화 상태. 마우스를 이동해보세요!"
+                : "Pointer Lock 비활성화 상태. F9를 눌러 다시 활성화하세요.";
+        });
+
+        document.addEventListener('pointerlockerror', () => {
+            alert("Pointer Lock 요청 실패!");
+        });
+
+        // 마우스 이동
+        inputArea.addEventListener('mousemove', (event) => {
+            if (isPointerLocked) {
+                const movementX = event.movementX;
+                const movementY = event.movementY;
+
+                socket.emit('relativeMouseMove', { movementX, movementY });
+                log.textContent = `Pointer Lock 상태: ΔX=${movementX}, ΔY=${movementY}`;
+            } else {
+                const rect = inputArea.getBoundingClientRect();
+                const clientX = event.clientX - rect.left;
+                const clientY = event.clientY - rect.top;
+                const clientWidth = rect.width;
+                const clientHeight = rect.height;
+
+                socket.emit('absoluteMouseMove', { clientX, clientY, clientWidth, clientHeight });
+                log.textContent = `Pointer Lock 비활성화 상태: X=${clientX}, Y=${clientY}`;
+            }
+        });
+
+        // 우클릭 기본 동작 방지
         inputArea.addEventListener('contextmenu', (event) => {
-            event.preventDefault(); // 기본 컨텍스트 메뉴 표시 막기
+            event.preventDefault();
             log.textContent = `Context menu blocked`;
         });
-    
-        // 마우스 위치를 클라이언트 화면 기준으로 전송
-        inputArea.addEventListener('mousemove', (event) => {
-            const rect = inputArea.getBoundingClientRect();
-            const clientX = event.clientX - rect.left; // 클라이언트 화면에서의 X 좌표
-            const clientY = event.clientY - rect.top;  // 클라이언트 화면에서의 Y 좌표
-            const clientWidth = rect.width;  // 클라이언트 화면 너비
-            const clientHeight = rect.height; // 클라이언트 화면 높이
-    
-            // 서버로 전송
-            socket.emit('absoluteMouseMove', { clientX, clientY, clientWidth, clientHeight });
-    
-            // 로그 표시
-            log.textContent = `Mouse moved: X=${clientX}, Y=${clientY}`;
-        });
-    
-        // 키보드 입력 감지 - 누를 때
-        inputArea.addEventListener('keydown', (event) => {
-            const key = event.key;
-    
-            if (!pressedKeys.has(key)) {
-                pressedKeys.add(key); // 눌린 키 관리
-                if (key === "Hangul" || key === "Hangul/English") {
-                    // 한영키 감지
-                    socket.emit('keyPress', { key: 'Hangul', type: 'down' });
-                    log.textContent = `Key pressed: 한영키`;
-                } else {
-                    socket.emit('keyPress', { key, type: 'down' }); // 서버로 키 누름 상태 전송
-                    log.textContent = `Key pressed: ${key}`;
-                }
-            }
-        });
-    
-        // 키보드 입력 감지 - 뗄 때
-        inputArea.addEventListener('keyup', (event) => {
-            const key = event.key;
-    
-            if (pressedKeys.has(key)) {
-                pressedKeys.delete(key); // 눌린 키에서 제거
-                if (key === "Hangul" || key === "Hangul/English") {
-                    // 한영키 떼기 감지
-                    socket.emit('keyPress', { key: 'Hangul', type: 'up' });
-                    log.textContent = `Key released: 한영키`;
-                } else {
-                    socket.emit('keyPress', { key, type: 'up' }); // 서버로 키 떼기 상태 전송
-                    log.textContent = `Key released: ${key}`;
-                }
-            }
-        });
-    
-        // 마우스 클릭 감지
+
+        // 마우스 클릭
         inputArea.addEventListener('mousedown', (event) => {
-            const button = event.button; // 0: 왼쪽 버튼, 1: 휠 버튼, 2: 오른쪽 버튼
+            const button = event.button;
             socket.emit('mouseClick', { button, type: 'down' });
             log.textContent = `Mouse button ${button} down`;
         });
-    
+
         inputArea.addEventListener('mouseup', (event) => {
             const button = event.button;
             socket.emit('mouseClick', { button, type: 'up' });
             log.textContent = `Mouse button ${button} up`;
         });
-    
-        // 포커스를 보장하기 위해 input-area를 클릭하면 포커스
-        inputArea.setAttribute('tabindex', '0');
+
+        // 포커스 유지
         inputArea.addEventListener('click', () => inputArea.focus());
-    </script>    
+    </script>
 </body>
 </html>
