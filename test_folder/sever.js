@@ -19,6 +19,21 @@ server.listen(8080, () => {
 
 io.on("connection", (socket) => {
     console.log("클라이언트 연결됨");
+        // Pointer Lock 상태에서 상대 좌표 이동 처리
+        socket.on('relativeMouseMove', async ({ movementX, movementY }) => {
+            try {
+                console.log(`Received relative movement: ΔX=${movementX}, ΔY=${movementY}`);
+    
+                // 상대 좌표로 이동
+                await mouse.move([
+                    new Point(movementX, movementY)
+                ]);
+    
+                console.log(`Moved mouse by ΔX=${movementX}, ΔY=${movementY}`);
+            } catch (error) {
+                console.error("Pointer Lock 이동 중 오류:", error.message);
+            }
+        });
 
     socket.on('absoluteMouseMove', ({ clientX, clientY, clientWidth, clientHeight }) => {
         try {
@@ -46,6 +61,25 @@ io.on("connection", (socket) => {
         }
     });
 
+    const { mouse, up, down } = require("@nut-tree-fork/nut-js");
+    const scrollspeed = 1;
+    socket.on('mouseWheel', ({ deltaY }) => {
+        console.log("Received mouse wheel deltaY:", deltaY);
+        try {
+            if (deltaY > 0) {
+                // 아래로 스크롤
+                mouse.scrollDown(Math.abs(deltaY) *scrollspeed); // deltaY가 양수일 때 아래로 스크롤
+                console.log(`Scrolled down by ${Math.abs(deltaY) * scrollspeed}`);
+            } else if (deltaY < 0) {
+                // 위로 스크롤
+                mouse.scrollUp(Math.abs(deltaY) * scrollspeed); // deltaY가 음수일 때 위로 스크롤
+                console.log(`Scrolled up by ${Math.abs(deltaY) * scrollspeed}`);
+            }
+        } catch (error) {
+            console.error("마우스 휠 처리 중 오류:", error.message);
+        }
+});
+    
     // 키보드 입력 처리
     socket.on("keyPress", ({ key, type }) => {
         try {
