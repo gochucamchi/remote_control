@@ -3,6 +3,7 @@ const socketIo = require("socket.io");
 const robot = require("robotjs");
 const fs = require("fs");
 const path = require("path");
+const jsautogui = require("jsautogui");
 
 const server = http.createServer((req, res) => {
     if (req.url === '/') {
@@ -10,6 +11,7 @@ const server = http.createServer((req, res) => {
         fs.createReadStream(path.join(__dirname, 'index.html')).pipe(res);
     }
 });
+
 
 const io = socketIo(server);
 const screenSize = robot.getScreenSize(); // 서버 컴퓨터의 화면 크기
@@ -19,6 +21,18 @@ server.listen(8080, () => {
 
 io.on("connection", (socket) => {
     console.log("클라이언트 연결됨");
+            // Pointer Lock 상태에서 상대 좌표 이동 처리
+           // Pointer Lock 상태에서 상대 좌표 이동 처리
+           socket.on('relativeMouseMove', ({ movementX, movementY }) => {
+            try {
+                console.log(`Received relative movement: ΔX=${movementX}, ΔY=${movementY}`);
+        
+                // 상대 이동 처리
+                jsautogui.mouse.moveRel(movementX, movementY);
+            } catch (error) {
+                console.error("Pointer Lock 이동 중 오류:", error.message);
+            }
+        });
 
     socket.on('absoluteMouseMove', ({ clientX, clientY, clientWidth, clientHeight }) => {
         try {
@@ -46,25 +60,36 @@ io.on("connection", (socket) => {
         }
     });
 
+    const { mouse, up, down } = require("@nut-tree-fork/nut-js");
+    const scrollspeed = 1;
+    socket.on('mouseWheel', ({ deltaY }) => {
+        try {
+            if (deltaY > 0) {
+                // 아래로 스크롤
+                mouse.scrollDown(Math.abs(deltaY) *scrollspeed); // deltaY가 양수일 때 아래로 스크롤
+            } else if (deltaY < 0) {
+                // 위로 스크롤
+                mouse.scrollUp(Math.abs(deltaY) * scrollspeed); // deltaY가 음수일 때 위로 스크롤
+            }
+        } catch (error) {
+            console.error("마우스 휠 처리 중 오류:", error.message);
+        }
+});
+const specialKeys = {
+    Backspace: "backspace",
+    Escape: "escape",
+    Delete: "delete",
+    Enter: "enter",
+    Tab: "tab",
+    ArrowUp: "up",
+    ArrowDown: "down",
+    ArrowLeft: "left",
+    ArrowRight: "right",
+};
     // 키보드 입력 처리
     socket.on("keyPress", ({ key, type }) => {
         try {
-            if (key === "Hangul" || key === "Hangul/English") {
-                console.log("한영키 전환 요청");
-                robot.keyTap("hanja"); // 일부 시스템에서 한영키 전환
-            } else {
-                const specialKeys = {
-                    Backspace: "backspace",
-                    Escape: "escape",
-                    Delete: "delete",
-                    Enter: "enter",
-                    Tab: "tab",
-                    ArrowUp: "up",
-                    ArrowDown: "down",
-                    ArrowLeft: "left",
-                    ArrowRight: "right",
-                };
-    
+
                 if (type === "down") {
                     if (specialKeys[key]) {
                         robot.keyToggle(specialKeys[key], "down");
@@ -79,7 +104,7 @@ io.on("connection", (socket) => {
                     }
                 }
             }
-        } catch (error) {
+        catch (error) {
             console.error("키 처리 중 오류 발생:", error.message);
         }
     });

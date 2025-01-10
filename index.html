@@ -112,7 +112,13 @@
             socket.emit('mouseClick', { button, type: 'up' });
             log.textContent = `Mouse button ${button} up`;
         });
-
+         // 마우스 휠
+        inputArea.addEventListener('wheel', (event) => {
+            const deltaY = event.deltaY; // 휠 스크롤 값
+            socket.emit('mouseWheel', { deltaY });
+            log.textContent = `Mouse wheel: ${deltaY > 0 ? 'down' : 'up'} (${deltaY})`;
+            console.log("Wheel event triggered:", event.deltaY);
+        });
         // 포커스 유지
         inputArea.addEventListener('click', () => inputArea.focus());
     </script>
