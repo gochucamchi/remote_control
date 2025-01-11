@@ -5,6 +5,40 @@ const fs = require("fs");
 const path = require("path");
 const jsautogui = require("jsautogui");
 
+const specialKeys = {
+    "/": "divide",
+    "?": "divide",
+    "\\": "\\",
+    "<": ",",
+    ">": ".",
+    '"': "'",
+    "@": "2" ,
+    "#": "3",
+    "!": "1",
+    "$": "7",
+    "%": "5",
+    "^": "6",
+    "&": "7",
+    "*": "8",
+    ";": ";",
+    "(": "9",
+    ")": "0",
+    "*": "multiply",
+    Backspace: "backspace",
+    Escape: "escape",
+    Delete: "delete",
+    Enter: "enter",
+    Tab: "tab",
+    ArrowUp: "up",
+    ArrowDown: "down",
+    ArrowLeft: "left",
+    ArrowRight: "right",
+    Control: "ctrl", // 추가
+    Alt: "alt",         // 추가
+    Shift: "shift",     // 추가
+    HangulMode: "hanguel",   // 한영키 추가
+};
+
 const server = http.createServer((req, res) => {
     if (req.url === '/') {
         res.writeHead(200, { 'Content-Type': 'text/html' });
@@ -21,11 +55,9 @@ server.listen(8080, () => {
 
 io.on("connection", (socket) => {
     console.log("클라이언트 연결됨");
-            // Pointer Lock 상태에서 상대 좌표 이동 처리
            // Pointer Lock 상태에서 상대 좌표 이동 처리
            socket.on('relativeMouseMove', ({ movementX, movementY }) => {
             try {
-                console.log(`Received relative movement: ΔX=${movementX}, ΔY=${movementY}`);
         
                 // 상대 이동 처리
                 jsautogui.mouse.moveRel(movementX, movementY);
@@ -45,62 +77,66 @@ io.on("connection", (socket) => {
             const serverY = Math.round(clientY * scaleY);
 
             // 마우스 이동
-            robot.moveMouse(serverX, serverY);
+            jsautogui.mouse.moveTo(serverX, serverY, 0)
         } catch (error) {
             console.error("마우스 이동 오류:", error.message);
         }
     });
 
-    // 마우스 클릭 처리
     socket.on('mouseClick', ({ button, type }) => {
-        if (type === 'down') {
-            robot.mouseToggle('down', button === 2 ? 'right' : 'left'); // 오른쪽 버튼이면 'right', 아니면 'left'
-        } else if (type === 'up') {
-            robot.mouseToggle('up', button === 2 ? 'right' : 'left');
+        try {
+            if (type === 'down') {
+                if (button === 0) {
+                    // 좌클릭 누름 상태
+                    jsautogui.mouse.down("left", true);
+                } else if (button === 1) {
+                    // 가운데 버튼 누름 상태
+                    jsautogui.mouse.down("middle", true);
+                } else if (button === 2) {
+                    // 우클릭 누름 상태
+                    jsautogui.mouse.down("right", true);
+                }
+            } else if (type === 'up') {
+                if (button === 0) {
+                    // 좌클릭 뗌 상태
+                    jsautogui.mouse.up("left", false);
+                } else if (button === 1) {
+                    // 가운데 버튼 뗌 상태
+                    jsautogui.mouse.up("middle", false);
+                } else if (button === 2) {
+                    // 우클릭 뗌 상태
+                    jsautogui.mouse.up("right", false);
+                }
+            }
+        } catch (error) {
+            console.error("마우스 클릭 처리 중 오류:", error.message);
         }
     });
 
-    const { mouse, up, down } = require("@nut-tree-fork/nut-js");
-    const scrollspeed = 1;
+    const scrollspeed = -1;
     socket.on('mouseWheel', ({ deltaY }) => {
         try {
-            if (deltaY > 0) {
-                // 아래로 스크롤
-                mouse.scrollDown(Math.abs(deltaY) *scrollspeed); // deltaY가 양수일 때 아래로 스크롤
-            } else if (deltaY < 0) {
-                // 위로 스크롤
-                mouse.scrollUp(Math.abs(deltaY) * scrollspeed); // deltaY가 음수일 때 위로 스크롤
-            }
+            jsautogui.mouse.scroll(0,deltaY * scrollspeed)
         } catch (error) {
             console.error("마우스 휠 처리 중 오류:", error.message);
         }
 });
-const specialKeys = {
-    Backspace: "backspace",
-    Escape: "escape",
-    Delete: "delete",
-    Enter: "enter",
-    Tab: "tab",
-    ArrowUp: "up",
-    ArrowDown: "down",
-    ArrowLeft: "left",
-    ArrowRight: "right",
-};
+
     // 키보드 입력 처리
     socket.on("keyPress", ({ key, type }) => {
         try {
-
+                console.log(key);
                 if (type === "down") {
                     if (specialKeys[key]) {
-                        robot.keyToggle(specialKeys[key], "down");
+                        jsautogui.keyboard.down(specialKeys[key]);
                     } else {
-                        robot.keyToggle(key.toLowerCase(), "down");
+                        jsautogui.keyboard.down(key.toLowerCase());
                     }
                 } else if (type === "up") {
                     if (specialKeys[key]) {
-                        robot.keyToggle(specialKeys[key], "up");
+                        jsautogui.keyboard.up(specialKeys[key]);
                     } else {
-                        robot.keyToggle(key.toLowerCase(), "up");
+                        jsautogui.keyboard.up(key.toLowerCase());
                     }
                 }
             }
