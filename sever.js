@@ -4,11 +4,24 @@ const robot = require("robotjs");
 const fs = require("fs");
 const path = require("path");
 const jsautogui = require("jsautogui");
+const net = require("net");
 
+const robotSpactial = {
+    '_': '_',
+    "/": "/",
+    "?": "?",
+    "{": "{",
+    "}": "}",
+    "[": "[",
+    "]": "]",
+    '=': '=',
+    ":": ":",
+    ';': ';',
+    '\\': '\\',
+    '~': '~',
+    };
 const specialKeys = {
-    "/": "divide",
-    "?": "divide",
-    "\\": "\\",
+    "₩": "₩",
     "<": ",",
     ">": ".",
     '"': "'",
@@ -24,6 +37,7 @@ const specialKeys = {
     "(": "9",
     ")": "0",
     "*": "multiply",
+    "_": "-",
     Backspace: "backspace",
     Escape: "escape",
     Delete: "delete",
@@ -41,27 +55,7 @@ const specialKeys = {
 
 const { spawn } = require('child_process');
 
-function sendToPython(command) {
-    return new Promise((resolve, reject) => {
-        const pythonProcess = spawn('python', ['input_handler.py', JSON.stringify(command)]);
-        
-        pythonProcess.stdout.on('data', (data) => {
-            console.log(`Python stdout: ${data}`);
-        });
-        
-        pythonProcess.stderr.on('data', (data) => {
-            console.error(`Python stderr: ${data}`);
-        });
-        
-        pythonProcess.on('close', (code) => {
-            if (code !== 0) {
-                reject(new Error(`Python process exited with code ${code}`));
-            } else {
-                resolve();
-            }
-        });
-    });
-}
+
 
 
 const server = http.createServer((req, res) => {
@@ -74,8 +68,43 @@ const server = http.createServer((req, res) => {
 
 const io = socketIo(server);
 const screenSize = robot.getScreenSize(); // 서버 컴퓨터의 화면 크기
+
+function sendToPython(command) {
+    return new Promise((resolve, reject) => {
+        const client = net.createConnection({ port: 5000 }, () => {
+            const data = JSON.stringify(command);
+            //console.log(`Sending to Python: ${data}`);  // 전송 데이터 확인
+            client.write(data);
+        });
+
+        client.on("data", (data) => {
+            //console.log(`Python response: ${data.toString()}`);
+            client.end();
+            resolve();
+        });
+
+         client.on("error", (err) => {
+             console.error("Python connection error:", err.message);
+            reject(err);
+         });
+    });
+}
+
+
+
 server.listen(8080, () => {
     console.log("서버가 실행 중입니다. 포트: 8080");
+});
+
+io.on("connection", (socket) => {
+    socket.on("relativeMouseMove", async ({ movementX, movementY }) => {
+        try {
+            const command = { action: "mouseMove", x: movementX, y: movementY };
+            await sendToPython(command);
+        } catch (error) {
+            console.error("Mouse move error:", error.message);
+        }
+    });
 });
 
 io.on("connection", (socket) => {
@@ -163,17 +192,21 @@ io.on("connection", (socket) => {
    // 키보드 입력 처리
    socket.on("work_keyPress", ({ key, type }) => {
     try {
-            console.log(key);
             if (type === "down") {
                 if (specialKeys[key]) {
                     jsautogui.keyboard.down(specialKeys[key]);
-                } else {
+                }
+                else if (robotSpactial[key]) {
+                    robot.keyTap(robotSpactial[key]);
+                }
+                 else {
                     jsautogui.keyboard.down(key.toLowerCase());
                 }
             } else if (type === "up") {
                 if (specialKeys[key]) {
                     jsautogui.keyboard.up(specialKeys[key]);
-                } else {
+                }
+                 else {
                     jsautogui.keyboard.up(key.toLowerCase());
                 }
             }
