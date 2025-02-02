@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC Screen Sharing</title>
+</head>
+<body>
+    <button id="start">화면 공유 시작</button>
+    <video id="video" autoplay playsinline></video>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.js"></script>
+    <script>
+        const socket = io("http://localhost:8080");
+        const video = document.getElementById("video");
+        const startButton = document.getElementById("start");
+        let peerConnection;
+
+        const config = {
+            iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+        };
+
+        startButton.onclick = async () => {
+            const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+            video.srcObject = stream;
+            socket.emit("broadcaster");
+
+            socket.on("watcher", (id) => {
+                const peer = new RTCPeerConnection(config);
+                stream.getTracks().forEach(track => peer.addTrack(track, stream));
+
+                peer.onicecandidate = ({ candidate }) => {
+                    if (candidate) socket.emit("candidate", id, candidate);
+                };
+
+                peer.createOffer().then(offer => {
+                    peer.setLocalDescription(offer);
+                    socket.emit("offer", id, offer);
+                });
+
+                peerConnection = peer;
+            });
+        };
+
+        socket.on("offer", async (id, offer) => {
+            peerConnection = new RTCPeerConnection(config);
+            peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            video.srcObject = stream;
+
+            stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+
+            peerConnection.onicecandidate = ({ candidate }) => {
+                if (candidate) socket.emit("candidate", id, candidate);
+            };
+
+            peerConnection.createAnswer().then(answer => {
+                peerConnection.setLocalDescription(answer);
+                socket.emit("answer", id, answer);
+            });
+        });
+
+        socket.on("answer", (id, answer) => {
+            peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+        });
+
+        socket.on("candidate", (id, candidate) => {
+            peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+        });
+
+        socket.on("disconnectPeer", (id) => {
+            if (peerConnection) peerConnection.close();
+        });
+    </script>
+</body>
+</html>

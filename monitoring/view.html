@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8" />
+    <title>화면 보기 - Viewer</title>
+</head>
+<body>
+    <h2>👀 Viewer</h2>
+    <video id="viewer" autoplay playsinline style="width: 100%; height: auto; background-color: black;"></video>
+    <button id="play">▶️ 재생</button>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.js"></script>
+    <script>
+        const socket = io("https://gocham.zapto.org");
+        const video = document.getElementById("viewer");
+        const playButton = document.getElementById("play");
+        let peerConnection;
+        const pendingCandidates = []; // ICE Candidate 저장용
+
+        async function getIceServers() {
+            try {
+                const response = await fetch("/iceservers");
+                const data = await response.json();
+                return data.iceServers;
+            } catch (error) {
+                console.error("❌ ICE 서버 가져오기 실패:", error);
+                return [{ urls: "stun:stun.l.google.com:19302" }];
+            }
+        }
+
+        socket.emit("watcher-ready");
+
+        socket.on("viewer-denied", (message) => {
+            alert(message); // "이미 누군가 시청 중입니다." 경고창 표시
+            window.location.href = "about:blank"; // 또는 다른 페이지로 이동
+        });
+
+        socket.on("broadcaster-available", async (broadcasterId) => {
+            console.log(`📡 Broadcaster 감지됨: ${broadcasterId}`);
+
+            const iceServers = await getIceServers(); // 서버에서 ICE 서버 정보 가져오기
+            peerConnection = new RTCPeerConnection({ iceServers });
+
+            peerConnection.ontrack = (event) => {
+                console.log("📡 화면 스트림 수신 완료");
+                video.srcObject = event.streams[0];
+                playButton.disabled = false;
+            };
+
+            peerConnection.onicecandidate = (event) => {
+                console.log("📡 ICE Candidate 발생:", event.candidate);
+                if (event.candidate) {
+                    socket.emit("candidate", broadcasterId, event.candidate);
+                }
+            };
+
+            // Offer를 받은 후 Remote Description을 설정하고, 저장된 ICE Candidate 추가
+            socket.on("offer", async (fromId, offer) => {
+                console.log("📡 Broadcaster로부터 Offer 수신:", offer);
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+                socket.emit("answer", fromId, answer);
+
+                console.log("📡 Answer 전송 완료:", answer);
+
+                // 저장된 ICE Candidate 추가
+                if (pendingCandidates.length > 0) {
+                    console.log("📡 대기 중이던 ICE Candidate 추가...");
+                    pendingCandidates.forEach(candidate => {
+                        peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                    });
+                    pendingCandidates.length = 0; // 큐 초기화
+                }
+            });
+
+            socket.on("candidate", (broadcasterId, candidate) => {
+            if (peerConnection.remoteDescription) {
+                console.log("📡 Broadcaster로부터 ICE Candidate 즉시 추가:", candidate);
+                peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            } else {
+                console.warn("📡 ICE Candidate를 바로 추가할 수 없음. 큐에 저장:", candidate);
+                pendingCandidates.push(candidate);
+            }
+        });
+
+            peerConnection.onconnectionstatechange = () => {
+                console.log("📡 WebRTC 연결 상태 변경:", peerConnection.connectionState);
+            };
+        });
+
+        playButton.onclick = () => {
+            console.log("▶️ 재생 버튼 클릭됨");
+            video.play();
+        };
+    </script>    
+</body>
+</html>
