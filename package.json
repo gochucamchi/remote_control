@@ -1,0 +1,26 @@
+{
+  "name": "ultra-low-latency-screen-capture",
+  "version": "1.0.0",
+  "description": "UDP 기반 초저지연 실시간 화면 캡처 애플리케이션",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "start:high": "node -e \"require('child_process').spawn(process.argv[0], ['server.js'], { detached: true, stdio: 'inherit', env: { ...process.env, NODE_PRIORITY: 'high' }, windowsHide: true })\" && echo \"고성능 모드로 서버 시작됨\"",
+    "start:dev": "nodemon server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "robotjs": "^0.6.0",
+    "screenshot-desktop": "^1.15.1",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "author": "",
+  "license": "MIT"
+}

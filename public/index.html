@@ -1,0 +1,736 @@
+<!-- public/index.html - 화면 공유 및 원격 제어를 위한 통합 클라이언트 -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>통합 원격 제어 및 화면 공유</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            overflow: hidden;
+            cursor: none; /* 페이지 전체에서 기본 마우스 커서 숨김 */
+        }
+        
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            width: 100%;
+        }
+        
+        .header {
+            padding: 10px;
+            background-color: #222;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            user-select: none;
+            cursor: default; /* 헤더 영역에서는 기본 커서 표시 */
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 20px;
+        }
+        
+        .control-panel {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .screen-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background-color: #000;
+            cursor: none; /* 화면 컨테이너 내에서 마우스 커서 명시적으로 숨김 */
+        }
+        
+        #screen {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+        }
+        
+        .cursor {
+            position: absolute;
+            width: 24px;
+            height: 24px;
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="M5,2 L5,13 L9,13 L12,18 L14,17 L11,13 L16,13 Z" fill="white" stroke="black" stroke-width="1.5"/></svg>');
+            pointer-events: none;
+            z-index: 100;
+            transform: translate(-5px, -5px);
+            display: none;
+            filter: drop-shadow(0 0 2px rgba(0,0,0,0.7));
+        }
+        
+        /* 포인터 락 상태일 때 커서에 시각적 표시 추가 */
+        .cursor.pointer-locked::after {
+            content: "";
+            position: absolute;
+            width: 28px;
+            height: 28px;
+            top: -2px;
+            left: -2px;
+            border: 2px solid #00ff00;
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 0.8; }
+            50% { transform: scale(1.2); opacity: 0.4; }
+            100% { transform: scale(1); opacity: 0.8; }
+        }
+        
+        .status-bar {
+            padding: 5px 10px;
+            background-color: #222;
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            user-select: none;
+            cursor: default; /* 상태 표시줄에 기본 커서 표시 */
+        }
+        
+        .indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            margin-right: 10px;
+        }
+        
+        .indicator-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #555;
+        }
+        
+        .indicator-dot.active {
+            background-color: #4CAF50;
+        }
+        
+        button {
+            padding: 8px 12px;
+            background-color: #333;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer !important; /* 버튼에 포인터 커서 강제 적용 */
+            font-size: 14px;
+        }
+        
+        button:hover {
+            background-color: #444;
+        }
+        
+        button:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+        }
+        
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 40px;
+            height: 20px;
+        }
+        
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer !important; /* 토글 스위치에 포인터 커서 강제 적용 */
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #555;
+            border-radius: 20px;
+            transition: .4s;
+        }
+        
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 2px;
+            bottom: 2px;
+            background-color: white;
+            border-radius: 50%;
+            transition: .4s;
+        }
+        
+        input:checked + .toggle-slider {
+            background-color: #4CAF50;
+        }
+        
+        input:checked + .toggle-slider:before {
+            transform: translateX(20px);
+        }
+        
+        .shortcut-info {
+            position: absolute;
+            bottom: 40px;
+            left: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            z-index: 100;
+            display: none;
+        }
+        
+        .mouse-movement-info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: #00ff00;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-size: 12px;
+            z-index: 100;
+            display: none;
+        }
+        
+        .shortcut-table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        
+        .shortcut-table td {
+            padding: 3px 8px;
+        }
+        
+        kbd {
+            background-color: #333;
+            border-radius: 3px;
+            border: 1px solid #666;
+            box-shadow: 0 1px 0 rgba(255,255,255,0.2);
+            color: #fff;
+            display: inline-block;
+            font-size: 11px;
+            line-height: 1.4;
+            margin: 0 2px;
+            padding: 2px 5px;
+            text-shadow: 0 -1px 0 rgba(0,0,0,0.25);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>통합 원격 제어 및 화면 공유</h1>
+            <div class="control-panel">
+                <button id="fullscreenBtn">전체화면</button>
+                <div class="indicator">
+                    <span>작업 모드</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="workModeToggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="indicator">
+                    <span>관리자 모드</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="adminModeToggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
+        </div>
+        
+        <div class="screen-container" id="screenContainer" tabindex="0">
+            <img id="screen" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="서버 화면">
+            <div id="cursor" class="cursor"></div>
+            <div class="shortcut-info" id="shortcutInfo">
+                <h3>단축키 목록</h3>
+                <table class="shortcut-table">
+                    <tr><td><kbd>F9</kbd></td><td>마우스 포인터 락 전환</td></tr>
+                    <tr><td><kbd>F2</kbd></td><td>작업 모드 전환</td></tr>
+                    <tr><td><kbd>F3</kbd></td><td>화면 블랙아웃</td></tr>
+                    <tr><td><kbd>F1</kbd></td><td>단축키 도움말 표시/숨기기</td></tr>
+                    <tr><td><kbd>F11</kbd></td><td>전체화면 모드 전환</td></tr>
+                    <tr><td><kbd>[</kbd></td><td>FPS 증가 (+10)</td></tr>
+                    <tr><td><kbd>]</kbd></td><td>FPS 감소 (-10)</td></tr>
+                    <tr><td><kbd>+</kbd></td><td>스크롤 속도 증가</td></tr>
+                    <tr><td><kbd>-</kbd></td><td>스크롤 속도 감소</td></tr>
+                </table>
+            </div>
+            <div class="mouse-movement-info" id="mouseMovementInfo">마우스 이동: ΔX=0, ΔY=0</div>
+        </div>
+        
+        <div class="status-bar">
+            <div>
+                <div class="indicator">
+                    <div id="connectionDot" class="indicator-dot"></div>
+                    <span id="connectionStatus">서버에 연결 중...</span>
+                </div>
+                <div class="indicator">
+                    <div id="streamingDot" class="indicator-dot"></div>
+                    <span id="streamingStatus">스트리밍 상태 확인 중...</span>
+                </div>
+                <div class="indicator">
+                    <div id="controlDot" class="indicator-dot"></div>
+                    <span id="controlStatus">마우스 제어: 비활성화</span>
+                </div>
+            </div>
+            <div>
+                <span id="latencyDisplay">지연 시간: --ms</span>
+                <span id="modeDisplay" style="margin-left: 10px;">게임 모드</span>
+                <span id="fpsDisplay" style="margin-left: 10px;">60 FPS</span>
+            </div>
+        </div>
+        
+        <div id="adminControls" style="padding: 10px; background-color: #333; display: none;">
+            <button id="startStreamBtn" disabled>스트리밍 시작</button>
+            <button id="stopStreamBtn" disabled>스트리밍 중지</button>
+        </div>
+    </div>
+
+    <!-- 관리자 컨트롤 패널 스타일 추가 -->
+    <style>
+        #adminControls {
+            cursor: default; /* 관리자 컨트롤 패널에 기본 커서 표시 */
+        }
+    </style>
+    
+    <script>
+        // 소켓 연결 및 주요 DOM 요소
+        const socket = io();
+        const screen = document.getElementById('screen');
+        const cursor = document.getElementById('cursor');
+        const screenContainer = document.getElementById('screenContainer');
+        const connectionStatus = document.getElementById('connectionStatus');
+        const streamingStatus = document.getElementById('streamingStatus');
+        const controlStatus = document.getElementById('controlStatus');
+        const latencyDisplay = document.getElementById('latencyDisplay');
+        const modeDisplay = document.getElementById('modeDisplay');
+        const fpsDisplay = document.getElementById('fpsDisplay');
+        const connectionDot = document.getElementById('connectionDot');
+        const streamingDot = document.getElementById('streamingDot');
+        const controlDot = document.getElementById('controlDot');
+        const adminControls = document.getElementById('adminControls');
+        const startStreamBtn = document.getElementById('startStreamBtn');
+        const stopStreamBtn = document.getElementById('stopStreamBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+        const workModeToggle = document.getElementById('workModeToggle');
+        const adminModeToggle = document.getElementById('adminModeToggle');
+        const shortcutInfo = document.getElementById('shortcutInfo');
+        
+        // 상태 변수
+        let isPointerLocked = false;
+        let isWorkMode = false;
+        let isBlackout = false;
+        let showShortcuts = false;
+        let lastFrameTime = 0;
+        let serverScreenWidth = 1920; // 기본값
+        let serverScreenHeight = 1080; // 기본값
+        let scrollMultiplier = 8; // 스크롤 배율 기본값 (8배로 증가)
+        let currentFps = 60; // 현재 FPS 설정값
+        
+        // 관리자 모드 토글
+        adminModeToggle.addEventListener('change', function() {
+            adminControls.style.display = this.checked ? 'block' : 'none';
+        });
+        
+        // 작업 모드 토글
+        workModeToggle.addEventListener('change', function() {
+            isWorkMode = this.checked;
+            modeDisplay.textContent = isWorkMode ? '작업 모드' : '게임 모드';
+        });
+        
+        // 전체화면 버튼
+        fullscreenBtn.addEventListener('click', () => {
+            if (screenContainer.requestFullscreen) {
+                screenContainer.requestFullscreen();
+            } else if (screenContainer.webkitRequestFullscreen) {
+                screenContainer.webkitRequestFullscreen();
+            } else if (screenContainer.msRequestFullscreen) {
+                screenContainer.msRequestFullscreen();
+            }
+        });
+        
+        // 키보드 이벤트 처리
+        screenContainer.addEventListener('keydown', (event) => {
+            if (event.key === 'F9') {
+                // 포인터 락 전환
+                if (!isPointerLocked) {
+                    screenContainer.requestPointerLock();
+                } else {
+                    document.exitPointerLock();
+                }
+                event.preventDefault();
+            } 
+            else if (event.key === 'F3') {
+                // 블랙아웃 화면 전환
+                isBlackout = !isBlackout;
+                screen.style.opacity = isBlackout ? '0' : '1';
+                cursor.style.opacity = isBlackout ? '0' : '1';
+                event.preventDefault();
+            } 
+            else if (event.key === 'F2') {
+                // 작업 모드 전환
+                isWorkMode = !isWorkMode;
+                workModeToggle.checked = isWorkMode;
+                modeDisplay.textContent = isWorkMode ? '작업 모드' : '게임 모드';
+                event.preventDefault();
+            }
+            else if (event.key === 'F1') {
+                // 단축키 도움말 표시/숨기기
+                showShortcuts = !showShortcuts;
+                shortcutInfo.style.display = showShortcuts ? 'block' : 'none';
+                event.preventDefault();
+            }
+            else if (event.key === 'F11') {
+                // F11 키 처리 - 전체화면 모드 전환
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen().catch(err => {
+                        console.error(`전체화면 오류: ${err.message}`);
+                    });
+                } else {
+                    document.exitFullscreen().catch(err => {
+                        console.error(`전체화면 종료 오류: ${err.message}`);
+                    });
+                }
+                event.preventDefault();
+            }
+            // FPS 증가 ([ 키)
+            else if (event.key === '[') {
+                if (currentFps < 120) {
+                    currentFps = Math.min(120, currentFps + 10);
+                    socket.emit('change-fps', { fps: currentFps });
+                    
+                    const notification = document.createElement('div');
+                    notification.textContent = `FPS: ${currentFps}`;
+                    notification.style.position = 'absolute';
+                    notification.style.bottom = '90px';
+                    notification.style.left = '50%';
+                    notification.style.transform = 'translateX(-50%)';
+                    notification.style.backgroundColor = 'rgba(0,0,0,0.7)';
+                    notification.style.color = '#fff';
+                    notification.style.padding = '8px 12px';
+                    notification.style.borderRadius = '4px';
+                    notification.style.zIndex = '1000';
+                    screenContainer.appendChild(notification);
+                    setTimeout(() => notification.remove(), 1500);
+                }
+                event.preventDefault();
+            }
+            // FPS 감소 (] 키)
+            else if (event.key === ']') {
+                if (currentFps > 10) {
+                    currentFps = Math.max(10, currentFps - 10);
+                    socket.emit('change-fps', { fps: currentFps });
+                    
+                    const notification = document.createElement('div');
+                    notification.textContent = `FPS: ${currentFps}`;
+                    notification.style.position = 'absolute';
+                    notification.style.bottom = '90px';
+                    notification.style.left = '50%';
+                    notification.style.transform = 'translateX(-50%)';
+                    notification.style.backgroundColor = 'rgba(0,0,0,0.7)';
+                    notification.style.color = '#fff';
+                    notification.style.padding = '8px 12px';
+                    notification.style.borderRadius = '4px';
+                    notification.style.zIndex = '1000';
+                    screenContainer.appendChild(notification);
+                    setTimeout(() => notification.remove(), 1500);
+                }
+                event.preventDefault();
+            }
+            // 스크롤 배율 증가 (+ 키)
+            else if (event.key === '+' || event.key === '=') {
+                scrollMultiplier = Math.min(20, scrollMultiplier + 1); // 0.5 대신 1씩 증가, 최대값 20으로 변경
+                const notification = document.createElement('div');
+                notification.textContent = `스크롤 속도: ${scrollMultiplier}x`;
+                notification.style.position = 'absolute';
+                notification.style.bottom = '60px';
+                notification.style.left = '50%';
+                notification.style.transform = 'translateX(-50%)';
+                notification.style.backgroundColor = 'rgba(0,0,0,0.7)';
+                notification.style.color = '#fff';
+                notification.style.padding = '8px 12px';
+                notification.style.borderRadius = '4px';
+                notification.style.zIndex = '1000';
+                screenContainer.appendChild(notification);
+                setTimeout(() => notification.remove(), 1500);
+                event.preventDefault();
+            }
+            // 스크롤 배율 감소 (- 키)
+            else if (event.key === '-') {
+                scrollMultiplier = Math.max(1, scrollMultiplier - 1); // 0.5 대신 1씩 감소, 최소값 1로 변경
+                const notification = document.createElement('div');
+                notification.textContent = `스크롤 속도: ${scrollMultiplier}x`;
+                notification.style.position = 'absolute';
+                notification.style.bottom = '60px';
+                notification.style.left = '50%';
+                notification.style.transform = 'translateX(-50%)';
+                notification.style.backgroundColor = 'rgba(0,0,0,0.7)';
+                notification.style.color = '#fff';
+                notification.style.padding = '8px 12px';
+                notification.style.borderRadius = '4px';
+                notification.style.zIndex = '1000';
+                screenContainer.appendChild(notification);
+                setTimeout(() => notification.remove(), 1500);
+                event.preventDefault();
+            }
+            else {
+                // 일반 키 이벤트를 서버로 전송
+                event.preventDefault();
+                let keyToSend = event.key;
+                if (keyToSend === "Control") keyToSend = "ctrl";
+                if (keyToSend === "HangulMode") keyToSend = "hanguel";
+                
+                if (!isWorkMode) {
+                    socket.emit('keyPress', { key: keyToSend, type: 'down' });
+                } else {
+                    socket.emit('work_keyPress', { key: keyToSend, type: 'down' });
+                }
+            }
+        });
+        
+        screenContainer.addEventListener('keyup', (event) => {
+            // 단축키가 아닌 경우만 서버로 전송
+            if (!['F1', 'F2', 'F3', 'F9'].includes(event.key)) {
+                event.preventDefault();
+                let keyToSend = event.key;
+                if (keyToSend === "Control") keyToSend = "ctrl";
+                if (keyToSend === "HangulMode") keyToSend = "hanguel";
+                
+                if (!isWorkMode) {
+                    socket.emit('keyPress', { key: keyToSend, type: 'up' });
+                } else {
+                    socket.emit('work_keyPress', { key: keyToSend, type: 'up' });
+                }
+            }
+        });
+        
+        // Pointer Lock 상태 관리
+        document.addEventListener('pointerlockchange', () => {
+            isPointerLocked = document.pointerLockElement === screenContainer;
+            controlStatus.textContent = isPointerLocked ? 
+                '마우스 제어: 포인터 락 (상대적 이동)' : 
+                '마우스 제어: 비활성화';
+            controlDot.classList.toggle('active', isPointerLocked);
+            
+            // 포인터 락 상태에 따른 커서 스타일 변경
+            cursor.classList.toggle('pointer-locked', isPointerLocked);
+            
+            // 포인터 락 상태에 따른 마우스 이동 정보 표시 제어
+            if (!isPointerLocked) {
+                mouseMovementInfo.style.display = 'none';
+            }
+        });
+        
+        // FPS 변경 이벤트 처리
+        socket.on('fps-changed', (data) => {
+            currentFps = data.fps;
+            fpsDisplay.textContent = `${currentFps} FPS`;
+            console.log(`서버 FPS가 ${currentFps}fps로 변경되었습니다.`);
+        });
+        
+        // 마우스 이동 이벤트 처리
+        screenContainer.addEventListener('mousemove', (event) => {
+            if (isPointerLocked) {
+                // 포인터 락 모드: 상대적 이동
+                const movementX = event.movementX;
+                const movementY = event.movementY;
+                socket.emit('relativeMouseMove', { movementX, movementY });
+                
+                // 마우스 이동 정보 표시
+                mouseMovementInfo.textContent = `마우스 이동: ΔX=${movementX}, ΔY=${movementY}`;
+                mouseMovementInfo.style.display = 'block';
+                
+                // 2초 후 자동으로 숨기기 (움직임이 없을 때)
+                clearTimeout(window.mouseInfoTimeout);
+                window.mouseInfoTimeout = setTimeout(() => {
+                    mouseMovementInfo.style.display = 'none';
+                }, 2000);
+            } else {
+                // 일반 모드: 이미지 내 좌표 계산 (클릭용)
+                mouseMovementInfo.style.display = 'none';
+                
+                const rect = screen.getBoundingClientRect();
+                
+                let x = (event.clientX - rect.left);
+                let y = (event.clientY - rect.top);
+                
+                // 이미지 경계 확인
+                if (x >= 0 && x <= rect.width && y >= 0 && y <= rect.height) {
+                    socket.emit('absoluteMouseMove', { 
+                        clientX: x,
+                        clientY: y,
+                        clientWidth: rect.width,
+                        clientHeight: rect.height
+                    });
+                }
+            }
+        });
+        
+        // 마우스 클릭 이벤트 처리
+        screenContainer.addEventListener('mousedown', (event) => {
+            event.preventDefault();
+            const button = event.button;
+            socket.emit('mouseClick', { button, type: 'down' });
+            
+            // 클릭 정보 표시 (디버깅용)
+            if (isPointerLocked) {
+                mouseMovementInfo.textContent = `마우스 버튼 ${button} 누름`;
+                mouseMovementInfo.style.display = 'block';
+                
+                // 2초 후 숨기기
+                clearTimeout(window.mouseInfoTimeout);
+                window.mouseInfoTimeout = setTimeout(() => {
+                    mouseMovementInfo.style.display = 'none';
+                }, 2000);
+            }
+        });
+        
+        screenContainer.addEventListener('mouseup', (event) => {
+            event.preventDefault();
+            const button = event.button;
+            socket.emit('mouseClick', { button, type: 'up' });
+            
+            // 클릭 정보 표시 (디버깅용)
+            if (isPointerLocked) {
+                mouseMovementInfo.textContent = `마우스 버튼 ${button} 뗌`;
+                mouseMovementInfo.style.display = 'block';
+                
+                // 1초 후 숨기기 (상대적으로 짧게)
+                clearTimeout(window.mouseInfoTimeout);
+                window.mouseInfoTimeout = setTimeout(() => {
+                    mouseMovementInfo.style.display = 'none';
+                }, 1000);
+            }
+        });
+        
+        // 우클릭 기본 동작 방지
+        screenContainer.addEventListener('contextmenu', (event) => {
+            event.preventDefault();
+        });
+        
+        // 마우스 휠 이벤트 처리
+        screenContainer.addEventListener('wheel', (event) => {
+            event.preventDefault();
+            // 정규화된 값 사용하여 보다 일관된 스크롤 경험 제공
+            const normalizedDeltaY = event.deltaY > 0 ? 100 : -100;
+            // 사용자 설정 배율 적용
+            const amplifiedDeltaY = normalizedDeltaY * scrollMultiplier;
+            socket.emit('mouseWheel', { deltaY: amplifiedDeltaY });
+            
+            // 스크롤 방향 정보 표시 (디버깅용)
+            if (isPointerLocked) {
+                mouseMovementInfo.textContent = `스크롤: ${normalizedDeltaY > 0 ? '아래' : '위'} (${amplifiedDeltaY})`;
+                mouseMovementInfo.style.display = 'block';
+                
+                // 2초 후 숨기기
+                clearTimeout(window.mouseInfoTimeout);
+                window.mouseInfoTimeout = setTimeout(() => {
+                    mouseMovementInfo.style.display = 'none';
+                }, 2000);
+            }
+        });
+        
+        // 클릭 시 포커스 유지
+        screenContainer.addEventListener('click', () => {
+            screenContainer.focus();
+        });
+        
+        // 화면 로드 시 포커스 설정
+        window.addEventListener('load', () => {
+            screenContainer.focus();
+            fpsDisplay.textContent = `${currentFps} FPS`;
+        });
+        
+        // 소켓 이벤트 처리
+        socket.on('connect', () => {
+            connectionStatus.textContent = '서버에 연결됨';
+            connectionDot.classList.add('active');
+        });
+        
+        socket.on('disconnect', () => {
+            connectionStatus.textContent = '서버와의 연결이 끊어짐';
+            connectionDot.classList.remove('active');
+            streamingDot.classList.remove('active');
+            startStreamBtn.disabled = true;
+            stopStreamBtn.disabled = true;
+        });
+        
+        socket.on('stream-status', (data) => {
+            if (data.streaming) {
+                streamingStatus.textContent = '스트리밍: 활성화';
+                streamingDot.classList.add('active');
+                startStreamBtn.disabled = true;
+                stopStreamBtn.disabled = false;
+            } else {
+                streamingStatus.textContent = '스트리밍: 비활성화';
+                streamingDot.classList.remove('active');
+                startStreamBtn.disabled = false;
+                stopStreamBtn.disabled = true;
+            }
+            
+            // 서버 화면 크기 정보 저장
+            if (data.screenWidth && data.screenHeight) {
+                serverScreenWidth = data.screenWidth;
+                serverScreenHeight = data.screenHeight;
+            }
+        });
+        
+        socket.on('screen-data', (data) => {
+            const now = Date.now();
+            const latency = now - lastFrameTime;
+            lastFrameTime = now;
+            
+            // 이미지 업데이트
+            screen.src = data.image;
+            
+            // 서버 화면 크기 업데이트
+            if (data.screenWidth && data.screenHeight) {
+                serverScreenWidth = data.screenWidth;
+                serverScreenHeight = data.screenHeight;
+            }
+            
+            // 마우스 커서 위치 업데이트 (항상 표시)
+            if (data.mouseX !== undefined && data.mouseY !== undefined) {
+                const rect = screen.getBoundingClientRect();
+                
+                // 이미지 비율에 맞춰 커서 위치 조정
+                const scaleX = rect.width / serverScreenWidth;
+                const scaleY = rect.height / serverScreenHeight;
+                
+                cursor.style.left = (data.mouseX * scaleX) + 'px';
+                cursor.style.top = (data.mouseY * scaleY) + 'px';
+                cursor.style.display = 'block';
+            }
+            
+            // 지연 시간 표시
+            latencyDisplay.textContent = `지연 시간: ${latency}ms`;
+        });
+        
+        // 관리자 스트리밍 버튼 이벤트
+        startStreamBtn.addEventListener('click', () => {
+            socket.emit('admin-start-stream');
+        });
+        
+        stopStreamBtn.addEventListener('click', () => {
+            socket.emit('admin-stop-stream');
+        });
+    </script>
+</body>
+</html>
