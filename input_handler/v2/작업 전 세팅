@@ -1,0 +1,7 @@
+node.js 세팅단
+# 1. package.json 파일 생성 (프로젝트 정보 및 라이브러리 관리)
+npm init -y
+
+# 2. express와 socket.io 라이브러리 설치
+npm install express socket.io
+
