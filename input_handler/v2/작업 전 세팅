@@ -6,5 +6,6 @@ npm init -y
 npm install express socket.io
 
 python 클라이언트 세팅단
-1.pip install "python-socketio[client]" pydirectinput pyautogui
+#1
+pip install "python-socketio[client]" pydirectinput pyautogui
 
