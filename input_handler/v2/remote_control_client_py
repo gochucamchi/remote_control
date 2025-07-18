@@ -80,7 +80,7 @@ def on_control(data):
 # 5. 메인 실행 블록
 if __name__ == '__main__':
     # 여기에 실제 EC2 서버의 주소를 입력해야 합니다.
-    EC2_SERVER_URL = "https://remote-control-pjwzz.run.goorm.site"
+    EC2_SERVER_URL = "http://YOUR_EC2_PUBLIC_IP:8081"
     
     while True:
         try:
