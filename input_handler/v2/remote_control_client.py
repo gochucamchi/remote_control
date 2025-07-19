@@ -90,7 +90,7 @@ def on_control(data):
     handle_input(data)
 
 if __name__ == '__main__':
-    EC2_SERVER_URL = "http://YOUR_EC2_PUBLIC_IP:8081"
+    EC2_SERVER_URL = "https://remote-control-pjwzz.run.goorm.site/"
     
     while True:
         try:
