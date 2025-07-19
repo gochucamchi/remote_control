@@ -28,16 +28,11 @@ def handle_input(command):
         elif action == "mouseUp":
             pydirectinput.mouseUp(button=command.get("button"))
         
-        # --- 모드별 휠 제어: 스크롤 처리 로직 수정 ---
+        # --- 휠 감도 개선: 스크롤 처리 로직 수정 ---
         elif action == "scroll":
-            # 브라우저의 deltaY는 아래로 스크롤 시 양수이므로, 부호를 반전시켜야 합니다.
-            scroll_amount = int(command.get("delta") * -1)
-            if mode == "game":
-                # pydirectinput.scroll()은 양수가 위, 음수가 아래입니다.
-                pydirectinput.scroll(scroll_amount)
-            else: # work mode
-                # pyautogui.scroll()도 양수가 위, 음수가 아래입니다.
-                pyautogui.scroll(scroll_amount)
+            # delta 값을 그대로 사용하되, pyautogui의 방향에 맞게 부호만 반전시킵니다.
+            # 인위적으로 값을 줄이는 로직을 제거하여 반응성을 높입니다.
+            pyautogui.scroll(int(command.get("delta") * -1))
             
     except Exception as e:
         print(f"Error handling action '{action}': {e}")
