@@ -4,6 +4,7 @@ import pyautogui
 import time
 import threading # ◀◀ 스레딩 라이브러리 추가
 import tkinter as tk # ◀◀ Tkinter 라이브러리 추가
+import os # ◀◀◀ 프로그램 강제 종료를 위해 os 라이브러리 추가
 
 # --- 기존 코드 (handle_input 함수 등)는 그대로 둡니다 ---
 # 초기 설정
@@ -43,18 +44,13 @@ def handle_input(command):
 # 🔽🔽🔽 이 아래부터가 새로 추가/수정되는 부분입니다 🔽🔽🔽
 
 # 1. GUI 창을 생성하고 실행하는 함수
+# 🔽🔽🔽 create_gui 함수만 아래와 같이 수정됩니다 🔽🔽🔽
+
 def create_gui():
     window = tk.Tk()
     window.title("원격 제어 클라이언트")
-    window.geometry("300x150") # 창 크기 설정
-    window.resizable(False, False) # 창 크기 조절 비활성화
-
-    # 아이콘이나 이미지를 추가하고 싶다면 아래 주석을 해제하고 파일 경로를 맞추세요.
-    # try:
-    #     # .ico 파일을 사용하려면 아래 코드 사용 (EXE 변환 시 경로 문제 해결 필요)
-    #     window.iconbitmap('icon.ico')
-    # except tk.TclError:
-    #     print("아이콘 파일을 찾을 수 없습니다.")
+    window.geometry("300x150")
+    window.resizable(False, False)
 
     label_status = tk.Label(window, text="✅ 서버 연결 대기 중...", font=("맑은 고딕", 12), pady=20)
     label_status.pack()
@@ -62,12 +58,20 @@ def create_gui():
     label_info = tk.Label(window, text="이 창이 켜져 있는 동안 원격 제어가 활성화됩니다.\n창을 닫으면 프로그램이 종료됩니다.", font=("맑은 고딕", 9))
     label_info.pack()
 
-    # connect 이벤트 핸들러를 수정하여 GUI 텍스트를 변경
+    # --- 💡 이 부분이 핵심 수정 사항입니다 ---
+    def on_closing():
+        """창이 닫힐 때 호출될 함수"""
+        print("프로그램을 종료합니다.")
+        sio.disconnect()  # 소켓 연결을 먼저 끊습니다.
+        os._exit(0)       # 프로그램 전체를 강제 종료합니다.
+
+    # 윈도우의 '닫기' 버튼 프로토콜에 위에서 만든 함수를 연결합니다.
+    window.protocol("WM_DELETE_WINDOW", on_closing) # ◀◀◀ 닫기 버튼 이벤트 재정의
+
     @sio.on('connect')
     def on_connect():
         print("✅ EC2 서버에 성공적으로 연결되었습니다!")
         sio.emit('register', 'exe')
-        # GUI의 라벨 텍스트를 메인 스레드에서 안전하게 변경
         label_status.config(text="🚀 서버에 연결되었습니다!", fg="blue")
 
     @sio.on('disconnect')
@@ -76,7 +80,6 @@ def create_gui():
         label_status.config(text="⏳ 서버와 연결이 끊겼습니다.", fg="red")
 
     window.mainloop()
-
 
 # 2. Socket.IO 클라이언트 생성 및 이벤트 핸들러
 sio = socketio.Client()
