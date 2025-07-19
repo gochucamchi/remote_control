@@ -1,169 +1,159 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mouse and Keyboard Control</title>
-    <!-- Socket.IO 클라이언트 라이브러리 로드 -->
-    <script src="/socket.io/socket.io.js"></script>
-    <style>
-        html, body {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            background-color: black;
-            overflow: hidden;
-            cursor: none; /* 기본 커서 숨김 */
-        }
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        #input-area {
-            width: 100vw;
-            height: 100vh;
-            background-color: black;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            outline: none;
-            border: none;
-            cursor: none;
-        }
-        #log {
-            position: absolute;
-            bottom: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: 14px;
-            color: #ccc;
-            background-color: rgba(0,0,0,0.5);
-            padding: 5px 10px;
-            border-radius: 5px;
-            text-align: center;
-            user-select: none;
-            transition: opacity 0.5s;
-        }
-    </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mouse and Keyboard Control</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: black;
+            overflow: hidden;
+            cursor: none;
+        }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        #input-area {
+            width: 100vw;
+            height: 100vh;
+            background-color: black;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            outline: none;
+            border: none;
+            cursor: none;
+        }
+        #log {
+            font-size: 14px;
+            margin-top: 10px;
+            color: #555;
+            text-align: center;
+        }
+    </style>
 </head>
 <body>
-    <div id="input-area" tabindex="0"></div>
-    <div id="log">F9를 눌러 Pointer Lock을 전환하세요.</div>
-    <script>
-        // 실제 EC2 서버 주소로 변경해야 합니다.
-        const EC2_SERVER_URL = "http://YOUR_EC2_PUBLIC_IP:8081";
-        const socket = io(EC2_SERVER_URL);
+    <div id="input-area" tabindex="0"></div>
+    <div id="log">F9를 눌러 Pointer Lock을 전환하세요.</div>
+    <script>
+        const socket = io();
+        const inputArea = document.getElementById('input-area');
+        const log = document.getElementById('log');
+        let isPointerLocked = false;
+        let isworking = false;
+        let isBlackout = false;
 
-        const inputArea = document.getElementById('input-area');
-        const log = document.getElementById('log');
-        let isPointerLocked = false;
-        let isWorkingMode = false;
-        let isBlackout = true;
-        
-        let scrollMultiplier = 1.0; 
-        let logTimeout;
+        // F3 키로 화면 토글
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'F3') {
+                isBlackout = !isBlackout;
+                inputArea.style.backgroundColor = isBlackout ? 'black' : '#f0f0f0';
+                log.textContent = isBlackout
+                    ? "화면이 검은색으로 변경되었습니다."
+                    : "화면이 원래 색상으로 복원되었습니다.";
+            }
+        });
 
-        function showLog(message, duration = 1500) {
-            log.textContent = message;
-            log.style.opacity = 1;
-            clearTimeout(logTimeout);
-            logTimeout = setTimeout(() => {
-                log.style.opacity = 0;
-            }, duration);
-        }
+        // 키다운 이벤트
+        inputArea.addEventListener('keydown', (event) => {
+    if (event.key === 'F9') {
+        if (!isPointerLocked) {
+            inputArea.requestPointerLock();
+        } else {
+            document.exitPointerLock();
+        }
+    } else if (event.key === 'F2') {
+        isworking = !isworking;
+    } else {
+        event.preventDefault();
+        let keyToSend = event.key;
+        if (keyToSend === "Control") keyToSend = "ctrl"; // Ctrl 명확히 매핑
+        if (keyToSend === "HangulMode") keyToSend = "hanguel"; // 한영키 매핑
+        if (!isworking) {
+            socket.emit('keyPress', { key: keyToSend, type: 'down' });
+        } else {
+            socket.emit('work_keyPress', { key: keyToSend, type: 'down' });
+        }
+    }
+});
 
-        socket.on('connect', () => {
-            showLog("서버에 연결되었습니다.", 2000);
-            socket.emit('register', 'web');
-        });
-        
-        socket.on('disconnect', () => {
-            showLog("서버 연결이 끊어졌습니다.", 5000);
-        });
+inputArea.addEventListener('keyup', (event) => {
+    event.preventDefault();
+    let keyToSend = event.key;
+    if (keyToSend === "Control") keyToSend = "ctrl";
+    if (keyToSend === "HangulMode") keyToSend = "hanguel";
+    if (!isworking) {
+        socket.emit('keyPress', { key: keyToSend, type: 'up' });
+    } else {
+        socket.emit('work_keyPress', { key: keyToSend, type: 'up' });
+    }
+});
 
-        document.addEventListener('keydown', (event) => {
-            if (event.key === 'F3') {
-                isBlackout = !isBlackout;
-                inputArea.style.backgroundColor = isBlackout ? 'black' : '#333';
-            }
-        });
+        // Pointer Lock 상태 관리
+        document.addEventListener('pointerlockchange', () => {
+            isPointerLocked = document.pointerLockElement === inputArea;
+            log.textContent = isPointerLocked
+                ? "Pointer Lock 활성화 상태. 마우스를 이동해보세요!"
+                : "Pointer Lock 비활성화 상태. F9를 눌러 다시 활성화하세요.";
+        });
 
-        inputArea.addEventListener('keydown', (event) => {
-            if (event.key === 'F9') {
-                if (!isPointerLocked) inputArea.requestPointerLock();
-                else document.exitPointerLock();
-            } else if (event.key === 'F2') {
-                isWorkingMode = !isWorkingMode;
-                showLog(isWorkingMode ? "작업 모드로 전환" : "게임 모드로 전환");
-            
-            } else if (event.key === '=' || event.key === '+') {
-                event.preventDefault();
-                scrollMultiplier = Math.min(5.0, scrollMultiplier + 0.5);
-                showLog(`스크롤 속도: ${scrollMultiplier.toFixed(1)}x`);
-            } else if (event.key === '-') {
-                event.preventDefault();
-                scrollMultiplier = Math.max(0.5, scrollMultiplier - 0.5);
-                showLog(`스크롤 속도: ${scrollMultiplier.toFixed(1)}x`);
-            } else {
-                event.preventDefault();
-                let keyToSend = event.key;
-                if (keyToSend === "Control") keyToSend = "ctrl";
-                if (keyToSend === "HangulMode") keyToSend = "hanguel";
-                
-                if (isWorkingMode) socket.emit('work_keyPress', { key: keyToSend, type: 'down' });
-                else socket.emit('keyPress', { key: keyToSend, type: 'down' });
-            }
-        });
+        document.addEventListener('pointerlockerror', () => {
+            alert("Pointer Lock 요청 실패!");
+        });
 
-        inputArea.addEventListener('keyup', (event) => {
-            if (['F2', 'F3', 'F9', '=', '+', '-'].includes(event.key)) return;
-            event.preventDefault();
-            let keyToSend = event.key;
-            if (keyToSend === "Control") keyToSend = "ctrl";
-            if (keyToSend === "HangulMode") keyToSend = "hanguel";
-            if (isWorkingMode) socket.emit('work_keyPress', { key: keyToSend, type: 'up' });
-            else socket.emit('keyPress', { key: keyToSend, type: 'up' });
-        });
+        // 마우스 이동
+        inputArea.addEventListener('mousemove', (event) => {
+            if (isPointerLocked) {
+                const movementX = event.movementX;
+                const movementY = event.movementY;
+                socket.emit('relativeMouseMove', { movementX, movementY });
+                log.textContent = `Pointer Lock 상태: ΔX=${movementX}, ΔY=${movementY}`;
+            } else {
+                const rect = inputArea.getBoundingClientRect();
+                const clientX = event.clientX - rect.left;
+                const clientY = event.clientY - rect.top;
+                const clientWidth = rect.width;
+                const clientHeight = rect.height;
+                socket.emit('absoluteMouseMove', { clientX, clientY, clientWidth, clientHeight });
+                log.textContent = `Pointer Lock 비활성화 상태: X=${clientX}, Y=${clientY}`;
+            }
+        });
 
-        document.addEventListener('pointerlockchange', () => {
-            isPointerLocked = document.pointerLockElement === inputArea;
-            showLog(isPointerLocked ? "Pointer Lock 활성화" : "Pointer Lock 비활성화");
-        });
+        // 우클릭 기본 동작 방지
+        inputArea.addEventListener('contextmenu', (event) => {
+            event.preventDefault();
+            log.textContent = `Context menu blocked`;
+        });
 
-        inputArea.addEventListener('mousemove', (event) => {
-            if (isPointerLocked) {
-                socket.emit('relativeMouseMove', { movementX: event.movementX, movementY: event.movementY });
-            } else {
-                const rect = inputArea.getBoundingClientRect();
-                socket.emit('absoluteMouseMove', { 
-                    clientX: event.clientX - rect.left, 
-                    clientY: event.clientY - rect.top, 
-                    clientWidth: rect.width, 
-                    clientHeight: rect.height 
-                });
-            }
-        });
+        // 마우스 클릭
+        inputArea.addEventListener('mousedown', (event) => {
+            const button = event.button;
+            socket.emit('mouseClick', { button, type: 'down' });
+            log.textContent = `Mouse button ${button} down`;
+        });
 
-        inputArea.addEventListener('contextmenu', (event) => event.preventDefault());
+        inputArea.addEventListener('mouseup', (event) => {
+            const button = event.button;
+            socket.emit('mouseClick', { button, type: 'up' });
+            log.textContent = `Mouse button ${button} up`;
+        });
 
-        inputArea.addEventListener('mousedown', (event) => {
-            socket.emit('mouseClick', { button: event.button, type: 'down' });
-        });
+        // 마우스 휠
+        inputArea.addEventListener('wheel', (event) => {
+            const normalizedDeltaY = event.deltaY > 0 ? 100 : -100;
+            socket.emit('mouseWheel', { deltaY: normalizedDeltaY });
+            log.textContent = `Mouse wheel: ${normalizedDeltaY > 0 ? 'down' : 'up'} (${normalizedDeltaY})`;
+        });
 
-        inputArea.addEventListener('mouseup', (event) => {
-            socket.emit('mouseClick', { button: event.button, type: 'up' });
-        });
-
-        inputArea.addEventListener('wheel', (event) => {
-            event.preventDefault();
-            const finalDelta = event.deltaY * scrollMultiplier;
-            socket.emit('mouseWheel', { deltaY: finalDelta });
-        });
-
-        window.addEventListener('load', () => inputArea.focus());
-        inputArea.addEventListener('click', () => inputArea.focus());
-    </script>
+        // 포커스 유지
+        inputArea.addEventListener('click', () => inputArea.focus());
+    </script>
 </body>
 </html>
