@@ -96,7 +96,7 @@ if __name__ == '__main__':
     gui_thread.start()
 
     # 서버 URL 설정
-    EC2_SERVER_URL = "https://remote-control-pjwzz.run.goorm.site/"
+    EC2_SERVER_URL = "https://gocam.p-e.kr:8081/"
 
     # 메인 스레드에서는 계속해서 서버 연결 시도
     while True:
