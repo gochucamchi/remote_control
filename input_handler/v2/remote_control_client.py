@@ -4,98 +4,106 @@ import pyautogui
 import time
 
 # 초기 설정
-# pydirectinput.PAUSE = 0  # 필요 시 지연 시간 비활성화
-# pyautogui.PAUSE = 0
 pydirectinput.FAILSAFE = False
 pyautogui.FAILSAFE = False
+
+
+# pydirectinput.PAUSE = 0
+# pyautogui.PAUSE = 0
 
 # PC를 제어하는 핵심 로직 함수
 def handle_input(command):
     action = command.get("action")
-    mode = command.get("mode", "game") # 기본 모드를 'game'으로 설정
+
+    key = command.get("key")
+    x = command.get("x")
+    y = command.get("y")
+    width = command.get("width")
+    height = command.get("height")
+    button = command.get("button")
+    delta = command.get("delta")
+    mode = command.get("mode", "game")
 
     try:
         if action == "mouseMove":
-            pydirectinput.moveRel(command.get("x"), command.get("y"), relative=True)
-
+            pydirectinput.moveRel(x, y, relative=True)
         elif action == "mouseMoveTo":
             screen_width, screen_height = pyautogui.size()
-            # 웹 클라이언트의 창 기준 좌표를 실제 PC 화면의 절대 좌표로 변환
-            target_x = int(command.get("x") / command.get("width") * screen_width)
-            target_y = int(command.get("y") / command.get("height") * screen_height)
+            target_x = int(x / width * screen_width)
+            target_y = int(y / height * screen_height)
             pyautogui.moveTo(target_x, target_y)
-
         elif action == "keyDown":
-            key = command.get("key")
             if mode == "game":
                 pydirectinput.keyDown(key)
             else:
                 pyautogui.keyDown(key)
-
         elif action == "keyUp":
-            key = command.get("key")
             if mode == "game":
                 pydirectinput.keyUp(key)
             else:
                 pyautogui.keyUp(key)
-
         elif action == "mouseDown":
-            button = command.get("button")
             if mode == "game":
                 pydirectinput.mouseDown(button=button)
             else:
                 pyautogui.mouseDown(button=button)
-
         elif action == "mouseUp":
-            button = command.get("button")
             if mode == "game":
                 pydirectinput.mouseUp(button=button)
             else:
                 pyautogui.mouseUp(button=button)
 
-        # --- 💡 마우스 휠 로직 수정 ---
+        # --- 휠 단위 변환 로직 수정 ---
         elif action == "scroll":
-            delta = command.get("delta")
-            # delta가 양수(아래)면 음수로, 음수(위)면 양수로 변환 (1 클릭 단위)
-            scroll_amount = -1 if delta > 0 else 1
-            
+            # 브라우저의 픽셀 단위 delta 값을 '클릭' 단위로 변환합니다.
+            # 보통 브라우저에서 1클릭은 100픽셀이므로, 100으로 나누어 단위를 맞춥니다.
+            SCROLL_SENSITIVITY_DIVISOR = 100.0
+
+            # 부호를 반전시켜 스크롤 방향을 맞춥니다.
+            scroll_amount = int(delta / SCROLL_SENSITIVITY_DIVISOR * -1)
+
+            # delta 값이 0은 아니지만 나누기 결과가 0이 되는 것을 방지 (미세 스크롤 보장)
+            if delta != 0 and scroll_amount == 0:
+                scroll_amount = -1 if delta > 0 else 1
+
             if mode == "game":
                 pydirectinput.scroll(scroll_amount)
-            else: # work mode
+            else:  # work mode
                 pyautogui.scroll(scroll_amount)
-            
+
     except Exception as e:
         print(f"Error handling action '{action}': {e}")
 
 
-# Socket.IO 클라이언트 생성
+# Socket.IO 클라이언트 생성 및 이벤트 핸들러 (이하 동일)
 sio = socketio.Client()
+
 
 @sio.event
 def connect():
     print("✅ EC2 서버에 성공적으로 연결되었습니다!")
-    # 서버에 'exe' 클라이언트로 등록
     sio.emit('register', 'exe')
+
 
 @sio.event
 def disconnect():
-    print("❌ 서버와의 연결이 끊어졌습니다. 재연결을 시도합니다.")
+    print("❌ 서버와의 연결이 끊어졌습니다.")
+
 
 @sio.on('control')
 def on_control(data):
-    # 서버로부터 제어 신호를 받으면 handle_input 함수 실행
     handle_input(data)
 
+
 if __name__ == '__main__':
-    # ❗ 본인의 EC2 서버 주소 또는 테스트용 주소를 입력하세요.
-    EC2_SERVER_URL = "https://remote-control-pjwzz.run.goorm.site/" 
-    
-    # 연결이 끊어지면 5초마다 재연결을 시도하는 무한 루프
+    EC2_SERVER_URL = "https://remote-control-pjwzz.run.goorm.site/"
+
     while True:
         try:
-            print(f"서버({EC2_SERVER_URL})에 연결을 시도합니다...")
-            sio.connect(EC2_SERVER_URL, transports=['websocket']) # 웹소켓 전송 방식을 명시
+            print(f"{EC2_SERVER_URL}에 연결을 시도합니다...")
+            sio.connect(EC2_SERVER_URL)
             sio.wait()
         except Exception as e:
             print(f"연결 실패 또는 오류 발생: {e}")
+            print("5초 후 재시도합니다...")
             time.sleep(5)
