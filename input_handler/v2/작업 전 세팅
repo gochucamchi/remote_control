@@ -18,6 +18,8 @@ pm2 startup
 
 # 3. 현재 실행 중인 프로세스 목록을 저장합니다.
 pm2 save
+#4 시작
+pm2 start server.js
 
 파이썬 수정 배포시 쓰는것
 pip install pyinstaller
