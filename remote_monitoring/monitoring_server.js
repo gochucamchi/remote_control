@@ -53,3 +53,27 @@ wss.on('connection', (ws) => {
                 sharer.send(message.toString());
             }
         }
+    });
+
+    // 뷰어가 접속하면, 이미 sharer가 있다면 해상도 정보를 보내줌
+    if (sharerResolution) {
+        ws.send(JSON.stringify(sharerResolution));
+    }
+    viewers.add(ws); // 일단 뷰어 Set에 추가
+
+    ws.on('close', () => {
+        if (ws === sharer) {
+            sharer = null;
+            sharerResolution = null;
+            console.log('화면 공유 클라이언트 연결이 끊어졌습니다.');
+        } else {
+            viewers.delete(ws);
+            console.log(`뷰어 연결이 끊어졌습니다. (남은 뷰어 ${viewers.size}명)`);
+        }
+    });
+});
+
+const port = 8080;
+server.listen(port, () => {
+  console.log(`웹 서버와 WebSocket 서버가 ${port} 포트에서 실행 중입니다...`);
+});
